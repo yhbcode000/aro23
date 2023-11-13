@@ -18,9 +18,65 @@ from tools import setcubeplacement
 def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
-    #TODO implement
-    print ("TODO: implement me")
-    return robot.q0, False
+    oMcubeL = getcubeplacement(cube, LEFT_HOOK)  # placement of the left hand hook
+    oMcubeR = getcubeplacement(cube, RIGHT_HOOK)  # placement of the right hand hook
+
+    left_frame_id = robot.model.getFrameId(LEFT_HAND)
+    right_frame_id = robot.model.getFrameId(RIGHT_HAND)
+
+    q = qcurrent
+    success = False
+    q_bias = robot.q0
+    alpha = 0.01
+    vq_bias = alpha * (q_bias - q)
+
+    for _ in range(10000):  # Number of iterations for convergence
+        pin.framesForwardKinematics(robot.model, robot.data, q)
+        pin.computeJointJacobians(robot.model, robot.data, q)
+        oMframe_Left = robot.data.oMf[left_frame_id]
+        oMframe_Right = robot.data.oMf[right_frame_id]
+
+        # Calculate the error in position and orientation for both hands
+        errL = pin.log(oMframe_Left.inverse() * oMcubeL).vector
+        JL = pin.computeFrameJacobian(robot.model, robot.data, q, left_frame_id)  # [:3,:]
+        errR = pin.log(oMframe_Right.inverse() * oMcubeR).vector
+        JR = pin.computeFrameJacobian(robot.model, robot.data, q, right_frame_id)  # [:3,:]
+
+        err = np.hstack([errL,errR])
+        #print(err.shape)
+        # If error is below a threshold, stop the iteration
+        if norm(errL) < EPSILON and norm(errR) < EPSILON:
+            success = True
+            break
+
+        # Compute the Jacobians for both hands
+
+        JL_inv = pinv(JL)
+        JR_inv = pinv(JR)
+
+
+
+        jacobian = np.hstack([JL_inv,JR_inv])
+
+        # Compute the velocity vectors (dq) for both hands
+        # dqL = -pinv(JL) @ errL
+        # dqR = -pinv(JR) @ errR
+
+        #print(jacobian.shape)
+        vq = jacobian @ err
+        #vq += vq_bias
+        #vq = np.hstack((vqL,vqR))
+        # Update the robot configuration
+        q = pin.integrate(robot.model,q, vq * EPSILON)
+
+        # Project the configuration to joint limits if necessary
+        #q = projecttojointlimits(robot,q)
+
+        # Check for collisions, if any, break and return failure
+    if collision(robot, q):
+        return q, False
+
+    return q, success
             
 if __name__ == "__main__":
     from tools import setupwithmeshcat
