@@ -30,7 +30,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     alpha = 0.01
     vq_bias = alpha * (q_bias - q)
 
-    for _ in range(10000):  # Number of iterations for convergence
+    for _ in range(100000):  # Number of iterations for convergence
         pin.framesForwardKinematics(robot.model, robot.data, q)
         pin.computeJointJacobians(robot.model, robot.data, q)
         oMframe_Left = robot.data.oMf[left_frame_id]
@@ -44,10 +44,6 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
 
         err = np.hstack([errL,errR])
         #print(err.shape)
-        # If error is below a threshold, stop the iteration
-        if norm(errL) < EPSILON and norm(errR) < EPSILON:
-            success = True
-            break
 
         # Compute the Jacobians for both hands
 
@@ -73,8 +69,14 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         #q = projecttojointlimits(robot,q)
 
         # Check for collisions, if any, break and return failure
-    if collision(robot, q):
-        return q, False
+        if norm(errL) < EPSILON and norm(errR) < EPSILON and not collision(robot, q):
+            success = True
+            break
+        
+    # # By default the success is false.
+    # # If error is below a threshold, stop the iteration
+    # if not (norm(errL) < EPSILON and norm(errR) < EPSILON and not collision(robot, q)):
+    #     success = False
 
     return q, success
             
