@@ -6,7 +6,6 @@ Created on Wed Sep  6 15:32:51 2023
 @author: stonneau
 """
 
-import time
 import pinocchio as pin 
 import numpy as np
 from numpy.linalg import pinv,inv,norm,svd,eig
@@ -87,10 +86,9 @@ if __name__ == "__main__":
     q = robot.q0.copy()
     
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
-    updatevisuals(viz, robot, cube, q0)
-    
     qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
-    updatevisuals(viz, robot, cube, qe)
+    
+    updatevisuals(viz, robot, cube, q0)
     
     
     
