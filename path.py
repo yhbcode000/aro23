@@ -18,28 +18,48 @@ from setup_meshcat import updatevisuals
 
 
 def random_cube():
-    x = np.random.uniform(-1, 1)
-    y = np.random.uniform(-1, 1)
-    z = np.random.uniform(-1, 1)
+    x = np.random.uniform(-0.5, 0.5)
+    y = np.random.uniform(-0.5, 0.5)
+    z = np.random.uniform(0.9, 1.5)
     # x = np.random.uniform(-1, 1)
     # y = np.random.uniform(-1, 1)
     # z = np.random.uniform(-1, 1)
     return pin.SE3(rotate('z', 0.), np.array([x, y, z]))
 
 
-def is_valid_configuration(robot, q, hook_distance,cube):
+# def is_valid_configuration(robot, q, hook_distance,cube):
+#     left_frame_id = robot.model.getFrameId(LEFT_HAND)
+#     right_frame_id = robot.model.getFrameId(RIGHT_HAND)
+#     oMframe_Left = robot.data.oMf[left_frame_id]
+#     oMframe_Right = robot.data.oMf[right_frame_id]
+#     hand_distance = np.linalg.norm(oMframe_Left.translation - oMframe_Right.translation)
+#     err = abs(hook_distance - hand_distance)
+#     if err < EPSILON:
+#         cube_position = (oMframe_Left.translation + oMframe_Right.translation) / 2
+#         cube_orientation = pin.SE3(oMframe_Left.rotation, cube_position).rotation
+#         oMcube = pin.SE3(cube_orientation, cube_position)
+#         setcubeplacement(robot,cube,oMcube)
+#     return not collision(robot, q) and not jointlimitsviolated(robot, q) and err< EPSILON and not collision_cube(cube)
+
+def is_valid_configuration(robot,cube,cubeplacement,qinit,viz):
+    q, success = computeqgrasppose(robot, qinit, cube, cubeplacement, viz)
+    setcubeplacement(robot,cube,cubeplacement)
+    pin.forwardKinematics(robot.model, robot.data, q)
+    pin.updateFramePlacements(robot.model, robot.data)
+
     left_frame_id = robot.model.getFrameId(LEFT_HAND)
     right_frame_id = robot.model.getFrameId(RIGHT_HAND)
     oMframe_Left = robot.data.oMf[left_frame_id]
     oMframe_Right = robot.data.oMf[right_frame_id]
-    hand_distance = np.linalg.norm(oMframe_Left.translation - oMframe_Right.translation)
-    err = abs(hook_distance - hand_distance)
-    if err < EPSILON:
-        cube_position = (oMframe_Left.translation + oMframe_Right.translation) / 2
-        cube_orientation = pin.SE3(oMframe_Left.rotation, cube_position).rotation
-        oMcube = pin.SE3(cube_orientation, cube_position)
-        setcubeplacement(robot,cube,oMcube)
-    return not collision(robot, q) and not jointlimitsviolated(robot, q) and err< EPSILON and not collision_cube(cube)
+    oMcubeL = getcubeplacement(cube, LEFT_HOOK)  # placement of the left hand hook
+    oMcubeR = getcubeplacement(cube, RIGHT_HOOK)  # placement of the right hand hook
+    errL = pin.log(oMframe_Left.inverse() * oMcubeL).vector
+    errR = pin.log(oMframe_Right.inverse() * oMcubeR).vector
+    updatevisuals(viz,robot,cube,q)
+    time.sleep(0.1)
+    if not success:
+        return False
+    return not collision(robot, q) and not jointlimitsviolated(robot, q) and np.linalg.norm(errL) < EPSILON and not collision_cube(cube) and np.linalg.norm(errR) < EPSILON
 
 
 def interpolate_configurations(q0, qe, discretionsteps=50):
@@ -51,6 +71,23 @@ def interpolate_configurations(q0, qe, discretionsteps=50):
 
     return interpolated_path
 
+def interpolate_cube_placement(start_placement, end_placement, steps=50):
+    interpolated_placements = []
+
+    for step in range(steps):
+        alpha = step / float(steps - 1)
+
+        # Interpolate translation
+        interpolated_translation = (1 - alpha) * start_placement.translation + alpha * end_placement.translation
+
+        # Interpolate rotation using slerp (spherical linear interpolation)
+        #interpolated_rotation = start_placement.rotation.slerp(alpha, end_placement.rotation)
+
+        # Construct the interpolated SE3 object
+        interpolated_placement = pin.SE3(start_placement.rotation, interpolated_translation)
+        interpolated_placements.append(interpolated_placement)
+
+    return interpolated_placements
 
 def collision_cube(cube):
     pin.updateGeometryPlacements(cube.model, cube.data, cube.collision_model, cube.collision_data)
@@ -60,7 +97,7 @@ def collision_cube(cube):
 # returns a collision free path from qinit to qgoal under grasping constraints
 # the path is expressed as a list of configurations
 def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
-    tree = [(None, qinit)]
+    tree = [[None, qinit,cubeplacementq0]]
     path_found = False
     robot, cube, viz = setupwithmeshcat()
 
@@ -77,35 +114,33 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
 
         # Find nearest configuration in the tree
         q_nearest = min(tree, key=lambda node: np.linalg.norm(q_sample - node[1]))[1]
-
+        cube_nearest = min(tree, key=lambda node: np.linalg.norm(q_sample - node[1]))[2]
         # Interpolate between q_nearest and q_sample
-        interpolated_path = interpolate_configurations(q_nearest, q_sample)
-
-        oMcubeL = getcubeplacement(cube, LEFT_HOOK)  # placement of the left hand hook
-        oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
-        hook_distance = np.linalg.norm(oMcubeL.translation - oMcubeR.translation)
+        #interpolated_path = interpolate_configurations(q_nearest, q_sample)
+        interpolated_cube_placement = interpolate_cube_placement(cube_nearest,cube_sample)
+        # oMcubeL = getcubeplacement(cube, LEFT_HOOK)  # placement of the left hand hook
+        # oMcubeR = getcubeplacement(cube, RIGHT_HOOK)
+        # hook_distance = np.linalg.norm(oMcubeL.translation - oMcubeR.translation)
         # Check each step in the interpolated path for validity
-        for q in interpolated_path:
-            if not is_valid_configuration(robot, q, hook_distance,cube):
-                break  # Stop if any configuration in the path is invalid
-        else:  # Python's for-else construct: else block runs if the loop wasn't 'broken'
-            tree.append((q_nearest,q_sample))  # Add q_sample to the tree if the path is valid
-        # if is_valid_configuration(robot, interpolated_path[0], cube):
-        #     tree.append((q_nearest, interpolated_path[0]))
-        #     for i in range(1, len(interpolated_path)):
-        #         if is_valid_configuration(robot, interpolated_path[i], cube):
-        #             tree.append((q_nearest, interpolated_path[i - 1]))
-        #         else:
-        #             break
+        # for q in interpolated_path:
+        #     if not is_valid_configuration(robot, q, hook_distance,cube):
+        #         break  # Stop if any configuration in the path is invalid
+        # else:  # Python's for-else construct: else block runs if the loop wasn't 'broken'
+        #     tree.append((q_nearest,q_sample))  # Add q_sample to the tree if the path is valid
+        for p in interpolated_cube_placement:
+            if not is_valid_configuration(robot,cube,p,qinit,viz):
+                break
+        else:
+            tree.append([q_nearest,q_sample,cube_sample])
 
         # Check if qgoal is reachable from any configuration in the tree
-        interpolated_path_to_goal = interpolate_configurations(q_sample, qgoal)
-        if any(is_valid_configuration(robot, q, hook_distance,cube) for q in
-               interpolated_path_to_goal):
+        #interpolated_path_to_goal = interpolate_configurations(q_sample, qgoal)
+        if all(is_valid_configuration(robot,cube,p,qinit,viz) for p in
+               interpolate_cube_placement(cube_sample,cubeplacementqgoal)):
             # tree.append((q_nearest, interpolated_path_to_goal[0]))
             # for i in range(1, len(interpolated_path_to_goal)):
             #     tree.append((q_nearest, interpolated_path_to_goal[i - 1]))
-            tree.append((q_sample, qgoal))
+            tree.append([q_sample,qgoal,cubeplacementqgoal])
             path_found = True
         updatevisuals(viz, robot, cube, q_sample)
 
@@ -136,7 +171,6 @@ if __name__ == "__main__":
     from tools import setupwithmeshcat
     from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
     from inverse_geometry import computeqgrasppose
-
     robot, cube, viz = setupwithmeshcat()
 
     q = robot.q0.copy()
@@ -149,3 +183,8 @@ if __name__ == "__main__":
     path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
 
     displaypath(robot, path, dt=5, viz=viz)  # you ll probably want to lower dt
+
+    # collision_cube_placement = pin.SE3(rotate('z', 0.),np.array([0.33, -0.7, 0.93]))
+    # setcubeplacement(robot,cube,collision_cube_placement)
+    # updatevisuals(viz,robot,cube,q0)
+    # print(collision_cube(cube))
