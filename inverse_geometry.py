@@ -30,7 +30,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
     alpha = 0.01
     vq_bias = alpha * (q_bias - q)
 
-    for _ in range(100000):  # Number of iterations for convergence
+    for _ in range(300):  # Number of iterations for convergence
         pin.framesForwardKinematics(robot.model, robot.data, q)
         pin.computeJointJacobians(robot.model, robot.data, q)
         oMframe_Left = robot.data.oMf[left_frame_id]
@@ -63,7 +63,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
         #vq += vq_bias
         #vq = np.hstack((vqL,vqR))
         # Update the robot configuration
-        q = pin.integrate(robot.model,q, vq * EPSILON)
+        q = pin.integrate(robot.model,q, vq)
 
         # Project the configuration to joint limits if necessary
         #q = projecttojointlimits(robot,q)
