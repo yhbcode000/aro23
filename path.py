@@ -56,7 +56,7 @@ def is_valid_configuration(robot,cube,cubeplacement,qinit,viz):
     errL = pin.log(oMframe_Left.inverse() * oMcubeL).vector
     errR = pin.log(oMframe_Right.inverse() * oMcubeR).vector
     updatevisuals(viz,robot,cube,q)
-    time.sleep(0.1)
+    time.sleep(0.01)
     if not success:
         return False
     return not collision(robot, q) and not jointlimitsviolated(robot, q) and np.linalg.norm(errL) < EPSILON and not collision_cube(cube) and np.linalg.norm(errR) < EPSILON
@@ -135,13 +135,13 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
 
         # Check if qgoal is reachable from any configuration in the tree
         #interpolated_path_to_goal = interpolate_configurations(q_sample, qgoal)
-        if all(is_valid_configuration(robot,cube,p,qinit,viz) for p in
-               interpolate_cube_placement(cube_sample,cubeplacementqgoal)):
+            if all(is_valid_configuration(robot,cube,p,qinit,viz) for p in
+                   interpolate_cube_placement(cube_sample,cubeplacementqgoal)):
             # tree.append((q_nearest, interpolated_path_to_goal[0]))
             # for i in range(1, len(interpolated_path_to_goal)):
             #     tree.append((q_nearest, interpolated_path_to_goal[i - 1]))
-            tree.append([q_sample,qgoal,cubeplacementqgoal])
-            path_found = True
+                tree.append([q_sample,qgoal,cubeplacementqgoal])
+                path_found = True
         updatevisuals(viz, robot, cube, q_sample)
 
     # Backtrack to find the path from qinit to qgoal
@@ -156,7 +156,7 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
         current_config = current_tuple[0]
     path.append(qinit)
     print(tree)
-    path.reverse()  # The path is constructed in reverse order, so reverse it
+    path.reverse()  
     print(path)
     return path
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
     path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
 
-    displaypath(robot, path, dt=5, viz=viz)  # you ll probably want to lower dt
+    displaypath(robot, path, dt=1, viz=viz)  # you ll probably want to lower dt
 
     # collision_cube_placement = pin.SE3(rotate('z', 0.),np.array([0.33, -0.7, 0.93]))
     # setcubeplacement(robot,cube,collision_cube_placement)
