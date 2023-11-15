@@ -19,8 +19,8 @@ Kp = 300.               # proportional gain (P of PD)
 Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
 
 
-def constant_velocity_segment_interpolation(robot, path, V, acceleration_rate, dt):
-    if V <= 0 or acceleration_rate <= 0 or dt <= 0:
+def constant_velocity_segment_interpolation(robot, path, v_max, a_max, dt):
+    if v_max <= 0 or a_max <= 0 or dt <= 0:
         raise ValueError("Velocity, acceleration rate, and dt must be positive")
 
     new_q_list = []
@@ -30,15 +30,15 @@ def constant_velocity_segment_interpolation(robot, path, V, acceleration_rate, d
         else:
             pq = new_q_list[-1][0]
         segment_length = np.linalg.norm(np.array(np.array(path[i+1]) - pq))
-        accel_distance = decel_distance = (V ** 2) / (2 * acceleration_rate)
+        accel_distance = decel_distance = (v_max ** 2) / (2 * a_max)
 
         if 2 * accel_distance > segment_length:
             # Adjust V and distances if segment is too short for full acceleration and deceleration
             accel_distance = decel_distance = segment_length / 2
-            V = np.sqrt(acceleration_rate * segment_length)
+            v_max = np.sqrt(a_max * segment_length)
 
         const_velocity_distance = segment_length - (accel_distance + decel_distance)
-        total_segment_time = 2 * (V / acceleration_rate) + const_velocity_distance / V
+        total_segment_time = 2 * (v_max / a_max) + const_velocity_distance / v_max
 
         # Check if total_segment_time is a valid number
         if not np.isfinite(total_segment_time):
@@ -47,15 +47,15 @@ def constant_velocity_segment_interpolation(robot, path, V, acceleration_rate, d
         current_position = 0
         current_velocity = 0
         for t in np.arange(0, total_segment_time, dt):
-            if t < V / acceleration_rate:  # Acceleration phase
-                current_velocity += acceleration_rate * dt
-                a = acceleration_rate
-            elif t < total_segment_time - (V / acceleration_rate):  # Constant velocity
-                current_velocity = V
+            if t < v_max / a_max:  # Acceleration phase
+                current_velocity += a_max * dt
+                a = a_max
+            elif t < total_segment_time - (v_max / a_max):  # Constant velocity
+                current_velocity = v_max
                 a = 0
             else:  # Deceleration phase
-                current_velocity -= acceleration_rate * dt
-                a = acceleration_rate
+                current_velocity -= a_max * dt
+                a = a_max
 
             # Update position and interpolate
             current_position += current_velocity * dt
@@ -100,11 +100,11 @@ def interpolate_position(path, position):
         accumulated_distance += segment_length
     return path[-1]
 
-def maketraj(robot, path, T, dt=0.01): 
+def maketraj(robot, path, T, sampling_time=0.01, v_max = 60): 
     path_with_dynamics = constant_velocity_segment_interpolation(robot, path,
-                                                V = 60,
-                                                acceleration_rate = 20, 
-                                                dt=dt) # TODO this function will deprecate soon
+                                                v_max = v_max,
+                                                a_max = 20, 
+                                                dt=sampling_time) # TODO this function will deprecate soon, change the return value
         
     path = [q for q, _, _ in path_with_dynamics]
         
@@ -166,8 +166,8 @@ if __name__ == "__main__":
     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
     path = computepath(robot, q0, qe, cube, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     path_with_dynamics = constant_velocity_segment_interpolation(robot, path,
-                                                V = 60,
-                                                acceleration_rate = 20, 
+                                                v_max = 60,
+                                                a_max = 20, 
                                                 dt=DT)
     
     #setting initial configuration
