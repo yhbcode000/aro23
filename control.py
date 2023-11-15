@@ -10,6 +10,9 @@ import time
 import numpy as np
 
 from bezier import Bezier
+import pinocchio as pin
+
+from setup_meshcat import updatevisuals
     
 # in my solution these gains were good enough for all joints but you might want to tune this.
 Kp = 300.               # proportional gain (P of PD)
@@ -97,16 +100,54 @@ def interpolate_position(path, position):
         accumulated_distance += segment_length
     return path[-1]
 
-def controllaw(sim, robot, trajs, tcurrent, cube):
-    q, vq = sim.getpybulletstate()
-    #TODO
+def maketraj(robot, path, T, dt=0.01): 
+    path_with_dynamics = constant_velocity_segment_interpolation(robot, path,
+                                                V = 60,
+                                                acceleration_rate = 20, 
+                                                dt=dt) # TODO this function will deprecate soon
+        
+    path = [q for q, _, _ in path_with_dynamics]
+        
+    q_of_t = Bezier(path,t_max=T)
+    vq_of_t = q_of_t.derivative(1)
+    vvq_of_t = vq_of_t.derivative(1)
+    return q_of_t, vq_of_t, vvq_of_t
+
+def controllaw(sim, robot, trajs, tcurrent, cube, viz=None):
+    # Get the current state from the simulator
+    q_c, vq_c = sim.getpybulletstate()
     q_of_t, vq_of_t, vvq_of_t = trajs
-    q = q_of_t(tcurrent)
-    vq = vq_of_t(tcurrent)
-    vvq = vvq_of_t(tcurrent)
-    
-    # torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
-    torques = vvq
+
+    # Desired states
+    q_des = q_of_t(tcurrent)  # Desired position
+    vq_des = vq_of_t(tcurrent)  # Desired velocity
+    vvq_des = vvq_of_t(tcurrent)  # Desired acceleration
+
+    # Position and velocity errors
+    pos_err = q_des - q_c
+    vel_err = vq_des - vq_c
+
+    # PD control for position and velocity
+    vvq = Kp * pos_err + Kv * vel_err + vvq_des
+
+    # Update robot's data structure for the current state
+    pin.forwardKinematics(robot.model, robot.data, q_c, vq_c)
+    pin.computeJointJacobians(robot.model, robot.data, q_c)
+
+    # Compute the Mass matrix using CRBA
+    M = pin.crba(robot.model, robot.data, q_c)
+
+    # Compute Coriolis forces (not matrix)
+    coriolis_forces = pin.nonLinearEffects(robot.model, robot.data, q_c, vq_c)
+
+    # Compute gravitational torques
+    G = pin.computeGeneralizedGravity(robot.model, robot.data, q_c)
+
+    # Calculate torques
+    torques = M.dot(vvq) + coriolis_forces + G
+
+    # Update visuals and simulate
+    updatevisuals(viz, robot, cube, q_des) if viz else None
     sim.step(torques)
 
 if __name__ == "__main__":
@@ -124,6 +165,10 @@ if __name__ == "__main__":
     q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
     path = computepath(robot, q0, qe, cube, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    path_with_dynamics = constant_velocity_segment_interpolation(robot, path,
+                                                V = 60,
+                                                acceleration_rate = 20, 
+                                                dt=DT)
     
     #setting initial configuration
     sim.setqsim(q0)
@@ -132,23 +177,26 @@ if __name__ == "__main__":
     #TODO this is just an example, you are free to do as you please.
     #In any case this trajectory does not follow the path 
     #0 init and end velocities
-    def maketraj(q0,q1,T): #TODO compute a real trajectory !
-        q_of_t = Bezier([q0,q0,q1,q1],t_max=T)
+    def maketraj(path, T): #TODO compute a real trajectory !
+        q_of_t = Bezier(path,t_max=T)
         vq_of_t = q_of_t.derivative(1)
         vvq_of_t = vq_of_t.derivative(1)
         return q_of_t, vq_of_t, vvq_of_t
-    
-    
+
+
     #TODO this is just a random trajectory, you need to do this yourself
-    total_time=100.
-    trajs = maketraj(q0, qe, total_time)   
-    
+    total_time=1.
+    trajs = maketraj([q for q, _, _ in path_with_dynamics], total_time)   
+
     tcur = 0.
     
+    
+    
+
     
     while tcur < total_time:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
         tcur += DT
-    
+        
     
     
