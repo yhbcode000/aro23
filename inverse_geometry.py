@@ -15,7 +15,7 @@ from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
 from tools import setcubeplacement
 
-def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
+def computeqgrasppose(robot, qcurrent, cube, cubetarget):
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
     oMcubeL = getcubeplacement(cube, LEFT_HOOK)  # placement of the left hand hook

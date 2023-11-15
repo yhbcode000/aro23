@@ -15,6 +15,7 @@ from pinocchio.utils import rotate
 import time
 from tools import collision, getcubeplacement, setcubeplacement, projecttojointlimits, jointlimitsviolated
 from setup_meshcat import updatevisuals
+from inverse_geometry import computeqgrasppose
 
 
 def random_cube():
@@ -41,8 +42,8 @@ def random_cube():
 #         setcubeplacement(robot,cube,oMcube)
 #     return not collision(robot, q) and not jointlimitsviolated(robot, q) and err< EPSILON and not collision_cube(cube)
 
-def is_valid_configuration(robot,cube,cubeplacement,qinit,viz):
-    q, success = computeqgrasppose(robot, qinit, cube, cubeplacement, viz)
+def is_valid_configuration(robot,cube,cubeplacement,qinit, viz=None):
+    q, success = computeqgrasppose(robot, qinit, cube, cubeplacement)
     setcubeplacement(robot,cube,cubeplacement)
     pin.forwardKinematics(robot.model, robot.data, q)
     pin.updateFramePlacements(robot.model, robot.data)
@@ -55,8 +56,8 @@ def is_valid_configuration(robot,cube,cubeplacement,qinit,viz):
     oMcubeR = getcubeplacement(cube, RIGHT_HOOK)  # placement of the right hand hook
     errL = pin.log(oMframe_Left.inverse() * oMcubeL).vector
     errR = pin.log(oMframe_Right.inverse() * oMcubeR).vector
-    updatevisuals(viz,robot,cube,q)
-    time.sleep(0.01)
+    updatevisuals(viz, robot, cube, q) if viz else None
+    # time.sleep(0.01)
     if not success:
         return False
     return not collision(robot, q) and not jointlimitsviolated(robot, q) and np.linalg.norm(errL) < EPSILON and not collision_cube(cube) and np.linalg.norm(errR) < EPSILON
@@ -96,10 +97,11 @@ def collision_cube(cube):
 
 # returns a collision free path from qinit to qgoal under grasping constraints
 # the path is expressed as a list of configurations
-def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
+def computepath(robot, qinit, qgoal, 
+                cube, cubeplacementq0, cubeplacementqgoal,
+                viz = None):
     tree = [[None, qinit,cubeplacementq0]]
     path_found = False
-    robot, cube, viz = setupwithmeshcat()
 
     while not path_found:
         # Sample a cube configuration
@@ -107,8 +109,7 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
         setcubeplacement(robot, cube, cube_sample)
 
         # Compute corresponding robot configuration
-        q_sample, success = computeqgrasppose(robot, qinit, cube, cube_sample, viz)
-        updatevisuals(viz, robot, cube, q_sample)
+        q_sample, success = computeqgrasppose(robot, qinit, cube, cube_sample)
         if not success or collision(robot, q_sample) or jointlimitsviolated(robot, q_sample) or collision_cube(cube):
             continue  # Skip invalid configurations
 
@@ -128,21 +129,21 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
         # else:  # Python's for-else construct: else block runs if the loop wasn't 'broken'
         #     tree.append((q_nearest,q_sample))  # Add q_sample to the tree if the path is valid
         for p in interpolated_cube_placement:
-            if not is_valid_configuration(robot,cube,p,qinit,viz):
+            if not is_valid_configuration(robot,cube,p,qinit):
                 break
         else:
             tree.append([q_nearest,q_sample,cube_sample])
 
         # Check if qgoal is reachable from any configuration in the tree
         #interpolated_path_to_goal = interpolate_configurations(q_sample, qgoal)
-            if all(is_valid_configuration(robot,cube,p,qinit,viz) for p in
+            if all(is_valid_configuration(robot,cube,p,qinit) for p in
                    interpolate_cube_placement(cube_sample,cubeplacementqgoal)):
             # tree.append((q_nearest, interpolated_path_to_goal[0]))
             # for i in range(1, len(interpolated_path_to_goal)):
             #     tree.append((q_nearest, interpolated_path_to_goal[i - 1]))
                 tree.append([q_sample,qgoal,cubeplacementqgoal])
                 path_found = True
-        updatevisuals(viz, robot, cube, q_sample)
+        updatevisuals(viz, robot, cube, q_sample) if viz else None
 
     # Backtrack to find the path from qinit to qgoal
     # ...
@@ -154,14 +155,14 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
         if current_tuple is None:
             break
         current_config = current_tuple[0]
-    path.append(qinit)
-    print(tree)
+    # path.append(qinit) # fixed no need to add another qinit
+    # print(tree)
     path.reverse()  
-    print(path)
+    # print(path)
     return path
 
 
-def displaypath(robot, path, dt, viz):
+def displaypath(path, dt, viz):
     for q in path:
         viz.display(q)
         time.sleep(dt)
@@ -170,7 +171,6 @@ def displaypath(robot, path, dt, viz):
 if __name__ == "__main__":
     from tools import setupwithmeshcat
     from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
-    from inverse_geometry import computeqgrasppose
     robot, cube, viz = setupwithmeshcat()
 
     q = robot.q0.copy()
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     if not (successinit and successend):
         print("error: invalid initial or end configuration")
 
-    path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    path = computepath(robot, q0, qe, cube, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
 
     displaypath(robot, path, dt=1, viz=viz)  # you ll probably want to lower dt
 
