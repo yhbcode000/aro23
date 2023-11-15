@@ -123,7 +123,7 @@ def controllaw(sim, robot, trajs, tcurrent, cube, viz=None):
     # Desired states
     q_des = q_of_t(tcurrent)  # Desired position
     vq_des = vq_of_t(tcurrent)  # Desired velocity
-    vvq_des = vvq_of_t(tcurrent)  # Desired acceleration
+    vvq_des = vvq_of_t(tcurrent)  # Desired acceleration # TODO add some force to the clamp
 
     # Position and velocity errors
     pos_err = q_des - q_c
@@ -176,17 +176,13 @@ if __name__ == "__main__":
     sim.setqsim(q0)
     
     
-    #TODO this is just an example, you are free to do as you please.
-    #In any case this trajectory does not follow the path 
-    #0 init and end velocities
-    def maketraj(path, T): #TODO compute a real trajectory !
+    def maketraj(path, T):
         q_of_t = Bezier(path,t_max=T)
         vq_of_t = q_of_t.derivative(1)
         vvq_of_t = vq_of_t.derivative(1)
         return q_of_t, vq_of_t, vvq_of_t
 
 
-    #TODO this is just a random trajectory, you need to do this yourself
     total_time=1.
     trajs = maketraj([q for q, _, _ in path_with_dynamics], total_time)   
 
