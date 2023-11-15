@@ -99,8 +99,14 @@ def interpolate_position(path, position):
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
     q, vq = sim.getpybulletstate()
-    #TODO 
-    torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
+    #TODO
+    q_of_t, vq_of_t, vvq_of_t = trajs
+    q = q_of_t(tcurrent)
+    vq = vq_of_t(tcurrent)
+    vvq = vvq_of_t(tcurrent)
+    
+    # torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
+    torques = vvq
     sim.step(torques)
 
 if __name__ == "__main__":
@@ -117,8 +123,7 @@ if __name__ == "__main__":
     
     q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
-    path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
-
+    path = computepath(robot, q0, qe, cube, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
     
     #setting initial configuration
     sim.setqsim(q0)
@@ -135,7 +140,7 @@ if __name__ == "__main__":
     
     
     #TODO this is just a random trajectory, you need to do this yourself
-    total_time=4.
+    total_time=100.
     trajs = maketraj(q0, qe, total_time)   
     
     tcur = 0.
