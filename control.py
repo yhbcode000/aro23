@@ -113,6 +113,8 @@ def maketraj(robot, path, T, sampling_time=0.01, v_max = 60):
     vvq_of_t = vq_of_t.derivative(1)
     return q_of_t, vq_of_t, vvq_of_t
 
+
+
 def controllaw(sim, robot, trajs, tcurrent, cube, viz=None):
     # Get the current state from the simulator
     q_c, vq_c = sim.getpybulletstate()
