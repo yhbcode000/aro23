@@ -34,7 +34,7 @@ def collision(robot, q):
      
      return pin.computeCollisions(robot.collision_model,robot.collision_data,False)
     
-def distanceToObstacle(robot, q):
+def distanceToObstacle(robot, q): # TODO may useful
       '''Return the shortest distance between robot and the obstacle. '''
       geomidobs = robot.collision_model.getGeometryId('obstaclebase_0')
       geomidtable = robot.collision_model.getGeometryId('baseLink_0')
