@@ -23,7 +23,7 @@ from tools import distanceToObstacle  # Assuming Bezier class is defined as befo
 
 
 # in my solution these gains were good enough for all joints but you might want to tune this.
-Kp = 2000.               # proportional gain (P of PD)
+Kp = 200000.               # proportional gain (P of PD)
 Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
 
 def segment_interpolation(path, number_seg):
@@ -38,7 +38,6 @@ def segment_interpolation(path, number_seg):
     new_q_list = np.concatenate((new_q_list, np.array([path[-1]])))
 
     return new_q_list
-    
 
 def constant_velocity_segment_interpolation(robot, path, total_time, number_seg, v_max, a_max):
     dt = total_time / (number_seg * len(path))
@@ -88,130 +87,106 @@ def constant_velocity_segment_interpolation(robot, path, total_time, number_seg,
 
     return np.array(new_q_list)
 
-# def get_v_a(t, path_with_dynamics, dt):
-#     index = int(t//dt)
-#     if index >= len(path_with_dynamics):
-#         return path_with_dynamics[-1]
-#     return path_with_dynamics[index]
+def cost_function(control_points_index, construct_points, total_time, robot, v_max, a_max, min_distance):
+    # Convert control points to a Bezier curve    
+    q_of_t = Bezier(construct_points(control_points_index), t_min=0, t_max=total_time)
+    vq_of_t = q_of_t.derivative(1)
+    vvq_of_t = vq_of_t.derivative(1)
+    
+    # Sample points on the Bezier curve and evaluate the cost based on robot dynamics
+    t_samples = np.linspace(0, total_time, 100)
+    total_cost = 0
+    for i, t in enumerate(t_samples):
+        point = q_of_t(t)
+        velocity = vq_of_t(t)
+        acceleration = vvq_of_t(t)
+        
+        if np.any(velocity > v_max) or np.any(velocity < - v_max):
+            velocity_cost = abs((velocity - v_max) / v_max)
+            total_cost += np.linalg.norm(velocity_cost)
+            
+        if np.any(acceleration > a_max) or np.any(acceleration < - a_max):
+            acceleration_cost = abs((acceleration - a_max) / a_max)
+            total_cost += np.linalg.norm(acceleration_cost)
 
+        if i == 0 or i == len(t_samples) - 1:
+            v_min = 1e-4
+            if np.any(velocity > v_min) or np.any(velocity < - v_min):
+                velocity_cost = abs(velocity)
+                total_cost += np.linalg.norm(velocity_cost)
+        
+        if distanceToObstacle(robot, point) < min_distance:
+            collision_cost = min_distance - distanceToObstacle(robot, point)
+            total_cost += collision_cost
 
-# def display_path_with_dynamics(path_with_dynamics, dt, viz):
-#     for q, v, a in path_with_dynamics:
-#         viz.display(q)
-#         time.sleep(dt)
+    # print(f"total_cost: {total_cost}")
 
-# def calculate_total_distance(path):
-#     """
-#     Calculate the total Euclidean distance covered in the path.
-#     """
-#     total_distance = 0
-#     for i in range(1, len(path)):
-#         total_distance += np.linalg.norm(np.array(path[i]) - np.array(path[i-1]))
-#     return total_distance
-
-
-# def interpolate_position(path, position):
-#     """
-#     Interpolate the robot's configuration based on the position along the path.
-#     """
-#     accumulated_distance = 0
-#     for i in range(1, len(path)):
-#         segment_length = np.linalg.norm(np.array(path[i]) - np.array(path[i-1]))
-#         if accumulated_distance + segment_length >= position:
-#             ratio = (position - accumulated_distance) / segment_length
-#             return (1 - ratio) * np.array(path[i-1]) + ratio * np.array(path[i])
-#         accumulated_distance += segment_length
-#     return path[-1]
+    return total_cost
 
 def optimize_bezier_control_points(robot, initial_control_points, total_time = 1, v_max = 60, a_max = 20):
 
+    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points])
     
-    def cost_function(control_points):
-        # Convert control points to a Bezier curve    
-        
-        q_of_t = Bezier(np.concatenate((initial_control_points[0:1],  
+    def construct_points(control_points):
+        return np.concatenate((initial_control_points[0:1],  
                               control_points.reshape(initial_control_points[1:-1].shape),
-                              initial_control_points[-1:]), axis=0), t_min=0, t_max=total_time)
-        vq_of_t = q_of_t.derivative(1)
-        vvq_of_t = vq_of_t.derivative(1)
-        
-        # Sample points on the Bezier curve and evaluate the cost based on robot dynamics
-        t_samples = np.linspace(0, total_time, 100)
-        total_cost = 0
-        for i, t in enumerate(t_samples):
-            point = q_of_t(t)
-            velocity = vq_of_t(t)
-            acceleration = vvq_of_t(t)
-            
-            if np.all(velocity > v_max) or np.all(velocity < - v_max):
-                velocity_cost = abs((velocity - v_max) / v_max)
-                total_cost += np.linalg.norm(velocity_cost)
-                
-            if np.all(acceleration > a_max) or np.all(acceleration < - a_max):
-                acceleration_cost = abs((acceleration - a_max) / a_max)
-                total_cost += np.linalg.norm(acceleration_cost)
-            
-            # a_min = 0.1
-            # if acceleration[0] > a_min or acceleration[0] < - a_min:
-            #     acceleration_cost = abs(acceleration[0])
-            #     total_cost += np.linalg.norm(acceleration_cost)
-            
-            if i == 0 or i == len(t_samples) - 1:
-                v_min = 0.001
-                if np.all(velocity > v_min) or np.all(velocity < - v_min):
-                    velocity_cost = abs(velocity)
-                    total_cost += 10 * np.linalg.norm(velocity_cost)
-            
-            # if abs(distanceToObstacle(robot, q) < 0.1):
-            #     collision_cost = abs(0.05 / distanceToObstacle(robot, q))
-            #     total_cost += collision_cost
-            
-            # Get frame IDs
-            left_frame_id = robot.model.getFrameId(LEFT_HAND)
-            right_frame_id = robot.model.getFrameId(RIGHT_HAND)
-
-            # Compute Jacobians for the hands
-            JL = pin.computeFrameJacobian(robot.model, robot.data, point, left_frame_id)
-            JR = pin.computeFrameJacobian(robot.model, robot.data, point, right_frame_id)
-
-            displacement = np.array([0, - 0.1 / 2, 0, 0, 0, 0])
-            
-            # print(np.linalg.norm(JL.T @ displacement - JR.T @ displacement))
-            
-            if np.linalg.norm(JL.T @ displacement - JR.T @ displacement) > 0.1: # 0.007
-                total_cost += 10 * np.linalg.norm(JL.T @ displacement - JR.T @ displacement)
-                
-            # updatevisuals(viz, robot, cube, point) if viz else None
-
-        # print(f"total_cost: {total_cost}")
+                              initial_control_points[-1:]), axis=0)
     
-        return total_cost
-
     # Flatten the control points array for optimization
     initial_guess = np.array(initial_control_points[1:-1]).flatten()
 
     # Optimize control points
-    result = minimize(cost_function, initial_guess, method='SLSQP')
-    # result = minimize(cost_function, initial_guess, method='BFGS')
-
+    result = minimize(cost_function, initial_guess, args=(construct_points, total_time, robot, v_max, a_max, min_distance), method='SLSQP')
+    
     # Reshape the optimized control points to their original shape    
-    optimized_control_points = np.concatenate((initial_control_points[0:1], initial_control_points[0:1],  
-                               result.x.reshape(initial_control_points[1:-1].shape),
-                               initial_control_points[-1:], initial_control_points[-1:]), axis=0)
+    optimized_control_points = construct_points(result.x)
     return optimized_control_points
 
-def maketraj(robot, path, total_time, v_max = 360, a_max = 60): 
-    path = segment_interpolation(path, number_seg=2)
-    path = optimize_bezier_control_points(robot, path, total_time, v_max = v_max, a_max = a_max)
+def filter_bezier_control_points(robot, initial_control_points, total_time = 1, number_sample_p_t = 10, v_max = 60, a_max = 20):
+    number_keep = int(total_time * number_sample_p_t)
+    
+    if number_keep < 10:
+        number_keep = 10
+    
+    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points])
+    
+    def construct_points(control_points_index):
+        # control_points_index = sorted(control_points_index)
+        points = initial_control_points[0:1]
+        for i in control_points_index:
+            index = min(int(i * len(initial_control_points)), len(initial_control_points) - 1)
+            points = np.append(points, np.array([initial_control_points[index]]), axis=0)
+        points = np.append(points, np.array([initial_control_points[-1]]), axis=0)
+        # print(points.shape)
+        return points
+
+    initial_guess = np.linspace(0, 1, number_keep)
+    
+    # Optimize control points
+    # result = minimize(cost_function, initial_guess, args=(construct_points, v_max, a_max, min_distance), method='SLSQP')
+    result = minimize(cost_function, initial_guess, method='BFGS', args=(construct_points, total_time, robot, v_max, a_max, min_distance), bounds=(
+        (0, 1) for _ in initial_guess
+    ))
+    
+    # Reshape the optimized control points to their original shape  
+    points = construct_points(result.x)
+    last_cost = cost_function(result.x, construct_points, total_time, robot, v_max, a_max, min_distance)
+    if last_cost != 0:
+        print(f"LOG: Can not find the optimal solution, try with more sample points. \nCurrent sample points: {number_sample_p_t}; current cost: {last_cost}")
+        return filter_bezier_control_points(robot, initial_control_points, total_time, number_sample_p_t + 5, v_max, a_max)
+    else:
+        return points
+    
+def maketraj(robot, path, total_time, number_sample_p_t=5, v_max = 360, a_max = 360): 
+    path = segment_interpolation(path, number_seg=5)
+    path = filter_bezier_control_points(robot, path, total_time, number_sample_p_t, v_max = v_max, a_max = a_max)
 
     q_of_t = Bezier(path,t_max=total_time)
     vq_of_t = q_of_t.derivative(1)
     vvq_of_t = vq_of_t.derivative(1)
     return q_of_t, vq_of_t, vvq_of_t
 
-
-
-def controllaw(sim, robot, trajs, tcurrent, cube, viz=None):
+def controllaw(sim, robot, trajs, tcurrent, cube, viz = None):
     # Get the current state from the simulator
     q_c, vq_c = sim.getpybulletstate()
     q_of_t, vq_of_t, vvq_of_t = trajs
@@ -244,12 +219,12 @@ def controllaw(sim, robot, trajs, tcurrent, cube, viz=None):
     # Calculate torques
     torques = M.dot(vvq) + coriolis_forces + G
         
-    # Assuming force is a 6-dimensional vector
-    force = np.array([0, -500, 0, 0, 0, 0])
-
     # Get frame IDs
     left_frame_id = robot.model.getFrameId(LEFT_HAND)
     right_frame_id = robot.model.getFrameId(RIGHT_HAND)
+    
+    # Assuming force is a 6-dimensional vector
+    force = np.array([0, -50 * np.linalg.norm(vq_c), 0, 0, 0, 0])
 
     # Compute Jacobians for the hands
     JL = pin.computeFrameJacobian(robot.model, robot.data, q_c, left_frame_id)
@@ -263,10 +238,12 @@ def controllaw(sim, robot, trajs, tcurrent, cube, viz=None):
     # Ensure torques array can accommodate these indices and is initialized properly
     torques += left_hand_torques
     torques += right_hand_torques
-
+    
     # Update visuals and simulate
-    updatevisuals(viz, robot, cube, q_des) if viz else None
+    updatevisuals(viz, robot, cube, q_c) if viz else None
     sim.step(torques)
+    
+    return torques
 
 if __name__ == "__main__":
         
@@ -282,35 +259,31 @@ if __name__ == "__main__":
     
     q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
-    path = computepath(robot, q0, qe, cube, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
-    path_with_dynamics = constant_velocity_segment_interpolation(robot, path,
-                                                v_max = 60,
-                                                a_max = 20, 
-                                                dt=DT)
+    path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+
     
     #setting initial configuration
     sim.setqsim(q0)
     
     
-    def maketraj(path, T):
-        q_of_t = Bezier(path,t_max=T)
+    #TODO this is just an example, you are free to do as you please.
+    #In any case this trajectory does not follow the path 
+    #0 init and end velocities
+    def maketraj(q0,q1,T): #TODO compute a real trajectory !
+        q_of_t = Bezier([q0,q0,q1,q1],t_max=T)
         vq_of_t = q_of_t.derivative(1)
         vvq_of_t = vq_of_t.derivative(1)
         return q_of_t, vq_of_t, vvq_of_t
-
-
-    total_time=1.
-    trajs = maketraj([q for q, _, _ in path_with_dynamics], total_time)   
-
+    
+    
+    #TODO this is just a random trajectory, you need to do this yourself
+    total_time=4.
+    trajs = maketraj(q0, qe, total_time)   
+    
     tcur = 0.
     
-    
-    
-
     
     while tcur < total_time:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
         tcur += DT
-        
-    
     
