@@ -13,7 +13,6 @@ from bezier import Bezier
 import pinocchio as pin
 from config import LEFT_HAND, RIGHT_HAND
 
-from setup_meshcat import updatevisuals
 from setup_pybullet import Simulation
 
 from scipy.optimize import minimize
@@ -224,7 +223,7 @@ def controllaw(sim, robot, trajs, tcurrent, cube, viz = None):
     right_frame_id = robot.model.getFrameId(RIGHT_HAND)
     
     # Assuming force is a 6-dimensional vector
-    force = np.array([0, -50 * np.linalg.norm(vq_c), 0, 0, 0, 0])
+    force = np.array([0, -100 * np.linalg.norm(vq_c), 0, 0, 0, 0])
 
     # Compute Jacobians for the hands
     JL = pin.computeFrameJacobian(robot.model, robot.data, q_c, left_frame_id)
@@ -240,7 +239,6 @@ def controllaw(sim, robot, trajs, tcurrent, cube, viz = None):
     torques += right_hand_torques
     
     # Update visuals and simulate
-    updatevisuals(viz, robot, cube, q_c) if viz else None
     sim.step(torques)
     
     return torques
@@ -259,29 +257,17 @@ if __name__ == "__main__":
     
     q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
-    path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
-
+    
+    
+    path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)    
+    
+    total_time=4.
+    trajs = maketraj(robot, path, total_time)   
     
     #setting initial configuration
     sim.setqsim(q0)
     
-    
-    #TODO this is just an example, you are free to do as you please.
-    #In any case this trajectory does not follow the path 
-    #0 init and end velocities
-    def maketraj(q0,q1,T): #TODO compute a real trajectory !
-        q_of_t = Bezier([q0,q0,q1,q1],t_max=T)
-        vq_of_t = q_of_t.derivative(1)
-        vvq_of_t = vq_of_t.derivative(1)
-        return q_of_t, vq_of_t, vvq_of_t
-    
-    
-    #TODO this is just a random trajectory, you need to do this yourself
-    total_time=4.
-    trajs = maketraj(q0, qe, total_time)   
-    
     tcur = 0.
-    
     
     while tcur < total_time:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
