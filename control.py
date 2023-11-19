@@ -114,9 +114,9 @@ def cost_function(control_points_index, construct_points, total_time, robot, v_m
                 velocity_cost = abs(velocity)
                 total_cost += np.linalg.norm(velocity_cost)
         
-        # if distanceToObstacle(robot, point) < min_distance:
-        #     collision_cost = min_distance - distanceToObstacle(robot, point)
-        #     total_cost += collision_cost
+        if distanceToObstacle(robot, point) < min_distance:
+            collision_cost = min_distance - distanceToObstacle(robot, point)
+            total_cost += collision_cost
 
     # print(f"total_cost: {total_cost}")
 
@@ -124,7 +124,7 @@ def cost_function(control_points_index, construct_points, total_time, robot, v_m
 
 def optimize_bezier_control_points(robot, initial_control_points, total_time = 1, v_max = 60, a_max = 20):
 
-    # min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points])
+    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points]) * 0.1
     
     def construct_points(control_points):
         return np.concatenate((initial_control_points[0:1],  
@@ -176,7 +176,7 @@ def filter_bezier_control_points(robot, initial_control_points, total_time = 1, 
     else:
         return points
     
-def maketraj(robot, path, total_time, number_sample_p_t=10, v_max = 360, a_max = 360): 
+def maketraj(robot, path, total_time, number_sample_p_t=5, v_max = 360, a_max = 360): 
     path = segment_interpolation(path, number_seg=5)
     path = filter_bezier_control_points(robot, path, total_time, number_sample_p_t, v_max = v_max, a_max = a_max)
 
