@@ -147,7 +147,7 @@ def filter_bezier_control_points(robot, initial_control_points, total_time = 1, 
     if number_keep < 10:
         number_keep = 10
     
-    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points]) * 0.1
+    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points]) * 0.5
     
     def construct_points(control_points_index):
         # control_points_index = sorted(control_points_index)
@@ -176,7 +176,7 @@ def filter_bezier_control_points(robot, initial_control_points, total_time = 1, 
     else:
         return points
     
-def maketraj(robot, path, total_time, number_sample_p_t=5, v_max = 360, a_max = 360): 
+def maketraj(robot, path, total_time, number_sample_p_t=10, v_max = 360, a_max = 360): 
     path = segment_interpolation(path, number_seg=5)
     path = filter_bezier_control_points(robot, path, total_time, number_sample_p_t, v_max = v_max, a_max = a_max)
 
