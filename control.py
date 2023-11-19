@@ -124,7 +124,7 @@ def cost_function(control_points_index, construct_points, total_time, robot, v_m
 
 def optimize_bezier_control_points(robot, initial_control_points, total_time = 1, v_max = 60, a_max = 20):
 
-    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points]) * 0.1
+    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points]) * 0.5
     
     def construct_points(control_points):
         return np.concatenate((initial_control_points[0:1],  
@@ -147,7 +147,7 @@ def filter_bezier_control_points(robot, initial_control_points, total_time = 1, 
     if number_keep < 10:
         number_keep = 10
     
-    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points])
+    min_distance = min([distanceToObstacle(robot, q) for q in initial_control_points]) * 0.1
     
     def construct_points(control_points_index):
         # control_points_index = sorted(control_points_index)
@@ -193,7 +193,7 @@ def controllaw(sim, robot, trajs, tcurrent, cube, viz = None):
     # Desired states
     q_des = q_of_t(tcurrent)  # Desired position
     vq_des = vq_of_t(tcurrent)  # Desired velocity
-    vvq_des = vvq_of_t(tcurrent)  # Desired acceleration # TODO add some force to the clamp
+    vvq_des = vvq_of_t(tcurrent)  # Desired acceleration 
 
     # Position and velocity errors
     pos_err = q_des - q_c
