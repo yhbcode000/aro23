@@ -117,6 +117,7 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
         interpolated_path, success = check_validity_interpolated_path(interpolated_cube_placement, robot, cube, qinit)
 
         if interpolated_path and success:
+            print("One Successful Interpolated Path Found")
             for p in interpolated_path:
                 tree.append(p)
                 kd_tree = KDTree([node[1] for node in tree])
